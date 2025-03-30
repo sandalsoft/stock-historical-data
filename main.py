@@ -12,6 +12,7 @@ def download_and_insert(symbol):
     Args:
         symbol (str): Stock ticker symbol (e.g., 'AAPL')
     """
+    print(f"Processing symbol: {symbol}")
     # Load environment variables from .env file
     load_dotenv()
 
@@ -23,6 +24,7 @@ def download_and_insert(symbol):
     db_port = os.getenv('DB_PORT')
 
     # Connect to PostgreSQL database
+    print(f"Connecting to database {db_name}...")
     conn = psycopg2.connect(
         dbname=db_name,
         user=db_user,
@@ -31,43 +33,68 @@ def download_and_insert(symbol):
         port=db_port
     )
     cur = conn.cursor()
+    print("Database connection successful.")
 
-    # Download historical data for the past month
+    # Download historical data for the past year
+    print(f"Downloading historical data for {symbol}...")
     stock = yf.Ticker(symbol)
-    # '1mo' gets approximately the past month
+    # '1y' gets data for the past year
     hist = stock.history(period='1y')
+    print(f"Downloaded {len(hist)} data points for {symbol}.")
 
     # Insert each row into the stock_prices table
+    print(f"Inserting data for {symbol} into the database...")
+    inserted_count = 0
+    skipped_count = 0
     for index, row in hist.iterrows():
-        cur.execute("""
-            INSERT INTO stock_prices (symbol, date, open, high, low, close, volume, dividends, stock_splits)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (symbol, date) DO NOTHING
-        """, (
-            symbol,
-            index.date(),           # Convert datetime to date
-            # Convert NumPy types to Python native types
-            float(row['Open']),
-            float(row['High']),
-            float(row['Low']),
-            float(row['Close']),
-            int(row['Volume']),
-            float(row['Dividends']),
-            float(row['Stock Splits'])
-        ))
+        try:
+            cur.execute("""
+                INSERT INTO stock_prices (symbol, date, open, high, low, close, volume, dividends, stock_splits)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (symbol, date) DO NOTHING
+            """, (
+                symbol,
+                index.date(),           # Convert datetime to date
+                # Convert NumPy types to Python native types
+                float(row['Open']),
+                float(row['High']),
+                float(row['Low']),
+                float(row['Close']),
+                int(row['Volume']),
+                float(row['Dividends']),
+                float(row['Stock Splits'])
+            ))
+            if cur.rowcount > 0:
+                inserted_count += 1
+            else:
+                skipped_count += 1
+        except Exception as e:
+            print(f"Error inserting row for {symbol} on {index.date()}: {e}")
+            conn.rollback()  # Rollback the single failed insert if needed, or handle differently
 
     # Commit the transaction and clean up
     conn.commit()
     cur.close()
     conn.close()
-    print(f"Data for {symbol} inserted successfully.")
+    print(
+        f"Data insertion for {symbol} complete. Inserted: {inserted_count}, Skipped (due to conflict): {skipped_count}.")
+    print(f"Database connection closed for {symbol}.")
 
 
 if __name__ == '__main__':
-    # Check for command-line argument
-    if len(sys.argv) != 2:
-        print("Usage: python script.py <symbol>")
+    # Check for command-line arguments
+    if len(sys.argv) < 2:
+        print("Usage: python main.py <symbol1> [symbol2] ...")
         sys.exit(1)
 
-    symbol = sys.argv[1]
-    download_and_insert(symbol)
+    symbols = sys.argv[1:]  # Get all arguments after the script name
+    print(f"Received symbols: {', '.join(symbols)}")
+
+    for symbol in symbols:
+        try:
+            # Convert symbol to uppercase for consistency
+            download_and_insert(symbol.upper())
+        except Exception as e:
+            print(f"Failed to process symbol {symbol}: {e}")
+
+    print("All symbols processed.")
