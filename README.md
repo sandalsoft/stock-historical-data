@@ -9,10 +9,11 @@ This tool fetches historical stock data for specified ticker symbols over a one-
 ## Features
 
 - Downloads stock price history for the past year
-- Processes multiple stock symbols in a single run
+- Processes multiple stock symbols specified via an environment variable
+- Efficient database connection handling (connects once per run)
 - Stores comprehensive price data (open, high, low, close, volume, dividends, stock splits)
-- Handles duplicate entries with conflict resolution
-- Uses environment variables for secure database configuration
+- Handles duplicate entries with conflict resolution (ON CONFLICT DO NOTHING)
+- Uses environment variables for secure database configuration and symbol list
 
 ## Requirements
 
@@ -54,37 +55,55 @@ CREATE TABLE IF NOT EXISTS stock_prices (
 
 ## Configuration
 
-Create a `.env` file in the project root with the following environment variables:
+Create a `.env` file in the project root by copying `.env.example`:
 
+```bash
+cp .env.example .env
 ```
+
+Edit the `.env` file and provide your database credentials and the list of stock symbols:
+
+```dotenv
+# .env
 DB_NAME=your_database_name
 DB_USER=your_database_user
 DB_PASSWORD=your_password
 DB_HOST=localhost
 DB_PORT=5432
+
+# Comma-separated list of stock symbols to process
+# Example: STOCK_SYMBOLS=AAPL,MSFT,GOOG,NVDA
+STOCK_SYMBOLS=AAPL, JEF, AMZN, NVDA
 ```
+
+**Important:** Ensure there are no extra spaces unless intended, although the script now trims whitespace around commas.
 
 ## Usage
 
-Run the program with one or more stock symbols as arguments:
+Ensure your `.env` file is correctly configured with database details and the `STOCK_SYMBOLS` variable.
+
+Run the program from the project root:
 
 ```bash
-python main.py AAPL MSFT GOOGL
+python src/main.py
 ```
 
 The application will:
 
-1. Connect to the configured PostgreSQL database
-2. Download historical stock data for each symbol
-3. Insert the data into the database, avoiding duplicates
-4. Report on the number of records inserted/skipped
+1. Read configuration from the `.env` file.
+2. Connect to the configured PostgreSQL database once.
+3. Download historical stock data for each symbol listed in `STOCK_SYMBOLS`.
+4. Insert the data into the `stock_prices` table, avoiding duplicates.
+5. Report on the number of records inserted/skipped/errored for each symbol.
+6. Close the database connection.
 
 ## Project Structure
 
-- `main.py` - Main script for data fetching and database operations
+- `src/main.py` - Main script for data fetching and database operations
 - `pyproject.toml` - Project dependencies and metadata
-- `.env` - Database configuration (not version controlled)
+- `.env` - Database configuration and symbol list (not version controlled)
 - `.env.example` - Example environment configuration
+- `README.md` - This file
 
 ## License
 
